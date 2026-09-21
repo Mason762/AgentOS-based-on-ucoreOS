@@ -64,6 +64,21 @@ struct proc_struct {
     skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process 
     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
+
+    /* ========= Agent‑OS 任务一扩展【追加在最后】 ========= */
+    enum { AGENT_TYPE_NORMAL = 0, AGENT_TYPE_AGENT = 1 } agent_type; //普通进程 / Agent进程
+    int heartbeat_interval;         //心跳周期(tick)，0=关闭心跳
+    size_t resource_quota;          //Agent上下文内存配额（字节）
+    enum { AGENT_LOOP_IDLE=0, AGENT_LOOP_THINK=1, AGENT_LOOP_WAIT=2 } loop_state; //Agent loop状态
+
+    // 上下文路径元信息：内核仅保存元，真实数据放在用户态Agent Context区
+    struct {
+        size_t total_len;           // 当前上下文路径总占用字节
+        size_t cur_pos;             // 当前节点位置
+        size_t quota;               // 配额副本，和resource_quota保持一致
+    } context_path_meta;
+
+    uintptr_t agent_ctx_va;         // Agent Context区 用户虚拟地址；普通进程 = 0
 };
 
 #define PF_EXITING                  0x00000001      // getting shutdown

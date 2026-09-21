@@ -54,6 +54,21 @@ struct proc_struct {
     char name[PROC_NAME_LEN + 1];               // Process name
     list_entry_t list_link;                     // Process link list 
     list_entry_t hash_link;                     // Process hash list
+
+    /* ========= Agent‑OS 任务一扩展字段 ========= */
+    enum { AGENT_TYPE_NORMAL = 0, AGENT_TYPE_AGENT = 1 } agent_type; // 普通进程 / Agent进程
+    int heartbeat_interval;         // 心跳周期，单位tick；0代表关闭心跳
+    size_t resource_quota;          // Agent上下文内存配额（字节）
+    enum { AGENT_LOOP_IDLE=0, AGENT_LOOP_THINK=1, AGENT_LOOP_WAIT=2 } loop_state; // Agent loop状态
+
+    // context_path_meta：上下文路径元信息（内核保存元，实际内容放在用户态Agent Context区）
+    struct {
+        size_t total_len;           // 当前上下文路径总占用字节
+        size_t cur_pos;             // 当前节点位置
+        size_t quota;               // 配额副本，和resource_quota保持一致
+    } context_path_meta;
+
+    uintptr_t agent_ctx_va;         // Agent Context区 用户虚拟地址；普通进程该值=0
 };
 
 #define le2proc(le, member)         \

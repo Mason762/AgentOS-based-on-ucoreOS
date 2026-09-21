@@ -85,3 +85,20 @@ int
 sys_sleep(unsigned int time) {
     return syscall(SYS_sleep, time);
 }
+
+// Agent‑OS 任务一 用户态封装
+int
+agent_create(int heartbeat, size_t quota)
+{
+    // SYS_agent_create = 200
+    // arg0=heartbeat(edx), arg1=quota(ecx)
+    return syscall(SYS_agent_create, heartbeat, quota);
+}
+
+int
+agent_info(int pid, struct agent_info *buf)
+{
+    // SYS_agent_info = 201
+    // arg0=pid(edx), arg1=buf(ecx)
+    return syscall(SYS_agent_info, pid, buf);
+}

@@ -39,6 +39,11 @@ struct context {
 
 extern list_entry_t proc_list;
 
+enum agent_type {
+    AGENT_NONE,     //普通进程，不是Agent
+    AGENT_NORMAL    //普通AI‑Agent进程
+};
+
 struct proc_struct {
     enum proc_state state;                      // Process state
     int pid;                                    // Process ID
@@ -54,6 +59,22 @@ struct proc_struct {
     char name[PROC_NAME_LEN + 1];               // Process name
     list_entry_t list_link;                     // Process link list 
     list_entry_t hash_link;                     // Process hash list
+
+    //new added for AI-Agent
+    enum agent_type agent_type;         // 是否Agent进程
+    uint32_t heartbeat_interval;        // 心跳周期（时钟tick数）
+    size_t resource_quota;               // Agent上下文内存配额（字节）
+    enum {AGENT_LOOP_RUNNING, AGENT_LOOP_DONE} loop_state; //Agent Loop状态
+    //上下文路径元信息：内核只存元数据，真实数据放在用户态Agent Context区
+    struct {
+        size_t total_len;
+        size_t cur_pos;
+        size_t quota;
+    } context_path_meta;
+
+    // 重要：记录Agent Context区 在用户空间的起始虚拟地址
+    uintptr_t agent_context_va;    // Agent Context区 用户态虚拟起始地址
+    size_t agent_context_size;     // Agent Context区总大小
 };
 
 #define le2proc(le, member)         \

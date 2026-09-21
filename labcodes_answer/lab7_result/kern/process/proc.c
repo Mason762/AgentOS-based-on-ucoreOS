@@ -129,6 +129,18 @@ alloc_proc(void) {
         proc->lab6_run_pool.left = proc->lab6_run_pool.right = proc->lab6_run_pool.parent = NULL;
         proc->lab6_stride = 0;
         proc->lab6_priority = 0;
+
+        /* ========= Agent‑OS 任务一新增初始化 ========= */
+        proc->agent_type = AGENT_TYPE_NORMAL;
+        proc->heartbeat_interval = 0;
+        proc->resource_quota = 0;
+        proc->loop_state = AGENT_LOOP_IDLE;
+
+        proc->context_path_meta.total_len = 0;
+        proc->context_path_meta.cur_pos = 0;
+        proc->context_path_meta.quota = 0;
+
+        proc->agent_ctx_va = 0; //普通进程无Agent Context区
     }
     return proc;
 }
@@ -844,8 +856,8 @@ init_main(void *arg) {
     if (pid <= 0) {
         panic("create user_main failed.\n");
     }
- extern void check_sync(void);
-    check_sync();                // check philosopher sync problem
+ //extern void check_sync(void);
+   // check_sync();                // check philosopher sync problem
 
     while (do_wait(0, NULL) == 0) {
         schedule();

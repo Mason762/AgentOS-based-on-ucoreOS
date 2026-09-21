@@ -1,5 +1,9 @@
 #ifndef __USER_LIBS_SYSCALL_H__
 #define __USER_LIBS_SYSCALL_H__
+#define SYS_agent_create 22
+#define SYS_agent_info 23
+
+struct agent_info;
 
 int sys_exit(int error_code);
 int sys_fork(void);
@@ -9,6 +13,9 @@ int sys_kill(int pid);
 int sys_getpid(void);
 int sys_putc(int c);
 int sys_pgdir(void);
+int agent_create(int heartbeat, size_t quota);
+int agent_info(int pid, struct agent_info *buf);
+
 /* FOR LAB6 ONLY */
 void sys_lab6_set_priority(uint32_t priority);
 

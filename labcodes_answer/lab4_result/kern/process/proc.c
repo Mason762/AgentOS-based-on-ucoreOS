@@ -114,6 +114,19 @@ alloc_proc(void) {
         proc->cr3 = boot_cr3;
         proc->flags = 0;
         memset(proc->name, 0, PROC_NAME_LEN);
+
+        //new added for AI-Agent
+        proc->agent_type = AGENT_NONE;         // 默认不是Agent，极其重要
+        proc->heartbeat_interval = 0;
+        proc->resource_quota = 0;
+        proc->loop_state = AGENT_LOOP_DONE;
+
+        proc->context_path_meta.total_len = 0;
+        proc->context_path_meta.cur_pos = 0;
+        proc->context_path_meta.quota = 0;
+
+        proc->agent_context_va = 0;    //0表示还没有分配Agent Context用户内存
+        proc->agent_context_size = 0;
     }
     return proc;
 }
@@ -358,6 +371,7 @@ do_exit(int error_code) {
 static int
 init_main(void *arg) {
     cprintf("this initproc, pid = %d, name = \"%s\"\n", current->pid, get_proc_name(current));
+    cprintf("init agent_type = %d\n", current->agent_type); //新增打印
     cprintf("To U: \"%s\".\n", (const char *)arg);
     cprintf("To U: \"en.., Bye, Bye. :)\"\n");
     return 0;
