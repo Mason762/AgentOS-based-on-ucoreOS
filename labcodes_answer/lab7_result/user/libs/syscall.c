@@ -2,10 +2,8 @@
 #include <unistd.h>
 #include <stdarg.h>
 #include <syscall.h>
-
 #define MAX_ARGS            5
-
-static inline int
+int
 syscall(int num, ...) {
     va_list ap;
     va_start(ap, num);
@@ -15,90 +13,81 @@ syscall(int num, ...) {
         a[i] = va_arg(ap, uint32_t);
     }
     va_end(ap);
-
     asm volatile (
         "int %1;"
         : "=a" (ret)
         : "i" (T_SYSCALL),
           "a" (num),
-          "d" (a[0]),
+          "b" (a[0]),
           "c" (a[1]),
-          "b" (a[2]),
-          "D" (a[3]),
-          "S" (a[4])
+          "d" (a[2]),
+          "S" (a[3]),
+          "D" (a[4])
         : "cc", "memory");
     return ret;
 }
-
 int
 sys_exit(int error_code) {
     return syscall(SYS_exit, error_code);
 }
-
 int
 sys_fork(void) {
     return syscall(SYS_fork);
 }
-
 int
 sys_wait(int pid, int *store) {
     return syscall(SYS_wait, pid, store);
 }
-
 int
 sys_yield(void) {
     return syscall(SYS_yield);
 }
-
 int
 sys_kill(int pid) {
     return syscall(SYS_kill, pid);
 }
-
 int
 sys_getpid(void) {
     return syscall(SYS_getpid);
 }
-
 int
 sys_putc(int c) {
     return syscall(SYS_putc, c);
 }
-
 int
 sys_pgdir(void) {
     return syscall(SYS_pgdir);
 }
-
 size_t
 sys_gettime(void) {
     return syscall(SYS_gettime);
 }
-
 void
 sys_lab6_set_priority(uint32_t priority)
 {
     syscall(SYS_lab6_set_priority, priority);
 }
-
 int
 sys_sleep(unsigned int time) {
     return syscall(SYS_sleep, time);
 }
-
 // Agent‑OS 任务一 用户态封装
 int
 agent_create(int heartbeat, size_t quota)
 {
-    // SYS_agent_create = 200
-    // arg0=heartbeat(edx), arg1=quota(ecx)
     return syscall(SYS_agent_create, heartbeat, quota);
 }
-
 int
 agent_info(int pid, struct agent_info *buf)
 {
-    // SYS_agent_info = 201
-    // arg0=pid(edx), arg1=buf(ecx)
     return syscall(SYS_agent_info, pid, buf);
+}
+// Agent‑OS 任务二 用户态封装
+int tool_call(uintptr_t req_buf)
+{
+    return syscall(SYS_tool_call, req_buf);
+}
+int tool_list(uint32_t *out_result_len)
+{
+    return syscall(SYS_tool_list, (uintptr_t)out_result_len);
 }

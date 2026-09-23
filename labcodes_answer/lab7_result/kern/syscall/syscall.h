@@ -6,6 +6,8 @@ void syscall(void);
 
 #define SYS_agent_create 22
 #define SYS_agent_info   23
+#define SYS_tool_call     202
+#define SYS_tool_list     203
 
 // 函数声明
 int agent_create(int heartbeat, size_t quota);

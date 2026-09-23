@@ -1,3 +1,4 @@
+#include <defs.h>
 #include <unistd.h>
 #include <proc.h>
 #include <syscall.h>
@@ -8,6 +9,9 @@
 #include <clock.h>
 #include <error.h>
 #include <vmm.h>
+#include <agent_tool.h>
+#include <string.h>
+
 #define AGENT_CTX_VA    0x20000000
 #define AGENT_CTX_SIZE  PGSIZE
 struct agent_info {
@@ -126,6 +130,10 @@ sys_agent_create(uint32_t arg[])
     }
     child->agent_ctx_va = AGENT_CTX_VA;
     cprintf("sys_agent_create: create pid %d, set agent_type=%d\n", pid, child->agent_type);
+        // 任务二：初始化Agent消息缓冲区
+    child->agent_msg_len = 0;
+    memset(child->agent_msg_buf, 0, AGENT_MSG_BUF_LEN);
+
     return pid;
 }
 
@@ -170,8 +178,94 @@ cprintf("sys_agent_info: copy success\n");
     return 0;
 }
 
+// Agent‑OS 任务二
+//===================== AgentOS 任务二：工具分发表 =====================
+typedef int (*tool_handler_t)(struct tool_request *req, void *out_buf, size_t max_out, size_t *out_len);
+
+struct tool_entry {
+    const char *tool_name;
+    tool_handler_t handler;
+};
+static const struct tool_entry tool_table[] = {
+    {"query_process",    tool_query_process},
+    {"get_system_status",tool_get_system_status},
+    {"send_message",     tool_send_message},
+    {NULL, NULL} // 结束标记
+};
 
 
+// 根据工具名查找handler
+static tool_handler_t find_tool(const char *tool_name)
+{   
+    int i;
+    for (i = 0; tool_table[i].tool_name != NULL; i++)
+    {
+        if (strcmp(tool_table[i].tool_name, tool_name) == 0)
+        {
+            return tool_table[i].handler;
+        }
+    }
+    return NULL;
+}
+
+static int
+sys_tool_call(uint32_t arg[])
+{
+    // arg[0]：用户态传入 struct tool_request 的虚拟地址 req_va
+    uintptr_t req_va = arg[0];
+
+    // ✅权限校验：仅Agent进程允许调用sys_tool_call
+    if (current->agent_type != AGENT_TYPE_AGENT)
+    {
+        return -E_PERM;
+    }
+
+    // 1. 在内核栈分配请求结构体缓冲区，从用户态拷贝 tool_request
+    struct tool_request req;
+    bool ret = copy_from_user(current->mm, &req, (void *)req_va, sizeof(struct tool_request), 0);
+    if (ret != 0)
+    {
+        return -E_INVAL;
+    }
+
+    // 2. 查找对应的工具handler
+    tool_handler_t handler = find_tool(req.tool_name);
+    if (handler == NULL)
+    {
+        return -E_NOENT;
+    }
+
+    // 3. 输出缓冲区：固定写入当前Agent的AGENT_CTX_VA，最大长度AGENT_CTX_SIZE
+    void *out_buf = (void *)AGENT_CTX_VA;
+    size_t out_len = 0;
+    ret = handler(&req, out_buf, AGENT_CTX_SIZE, &out_len);
+
+    // handler执行完成，ret是handler返回值；out_len是实际输出字节长度
+    // 返回给用户态：本次输出的有效字节数
+    if (ret == 0)
+    {
+        return out_len;
+    }
+    return ret;
+}
+
+static int
+sys_tool_list(uint32_t arg[])
+{
+    uintptr_t out_len_va = arg[0]; // 用户态：uint32_t *out_result_len
+    uint32_t count = 0;
+    // 统计工具数量
+    int i;
+    for(i = 0; tool_table[i].tool_name != NULL; i++){
+        count++;
+    }
+    // 将count拷贝回用户态指针
+    int ret = copy_to_user(current->mm, (void *)out_len_va, &count, sizeof(uint32_t));
+    if(ret != 0){
+        return -E_INVAL;
+    }
+    return 0;
+}
 
 
 static int (*syscalls[])(uint32_t arg[]) = {
@@ -187,9 +281,12 @@ static int (*syscalls[])(uint32_t arg[]) = {
     [SYS_gettime]           sys_gettime,
     [SYS_lab6_set_priority] sys_lab6_set_priority,
     [SYS_sleep]             sys_sleep,
-    /* ========= Agent‑OS 新增 ========= */
+    /* ========= Agent‑OS 任务一新增 ========= */
     [SYS_agent_create]        sys_agent_create,
     [SYS_agent_info]           sys_agent_info,
+    /* ========= Agent‑OS 任务二 新增 ========= */
+    [SYS_tool_call]         sys_tool_call,
+    [SYS_tool_list]         sys_tool_list,
 };
 
 #define NUM_SYSCALLS        ((sizeof(syscalls)) / (sizeof(syscalls[0])))

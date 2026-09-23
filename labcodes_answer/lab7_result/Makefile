@@ -116,7 +116,8 @@ $(call add_files_cc,$(call listf_cc,$(LIBDIR)),libs,)
 # user programs
 
 UINCLUDE	+= user/include/ \
-			   user/libs/
+			   user/libs/ \
+			   include/
 
 USRCDIR		+= user
 
@@ -155,7 +156,8 @@ KINCLUDE	+= kern/debug/ \
 			   kern/fs/    \
 			   kern/process \
 			   kern/schedule \
-			   kern/syscall
+			   kern/syscall\
+			   include/
 
 KSRCDIR		+= kern/init \
 			   kern/libs \
@@ -283,10 +285,10 @@ RUN_PREFIX	:= _binary_$(OBJDIR)_$(USER_PREFIX)
 MAKEOPTS	:= --quiet --no-print-directory
 
 run-%: build-%
-	$(V)$(QEMU) -parallel stdio $(QEMUOPTS) -serial null
-
+	$(V)$(QEMU) -parallel stdio $(QEMUOPTS) -serial file:qemu_serial.log
 run-nox-%: build-%
-	$(V)$(QEMU) -serial mon:stdio $(QEMUOPTS) -nographic
+	$(V)$(QEMU) $(QEMUOPTS) -nographic -serial file:qemu_serial.log
+
 
 build-%: touch
 	$(V)$(MAKE) $(MAKEOPTS) "DEFS+=-DTEST=$* -DTESTSTART=$(RUN_PREFIX)$*_out_start -DTESTSIZE=$(RUN_PREFIX)$*_out_size"

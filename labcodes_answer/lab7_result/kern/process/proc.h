@@ -79,6 +79,12 @@ struct proc_struct {
     } context_path_meta;
 
     uintptr_t agent_ctx_va;         // Agent Context区 用户虚拟地址；普通进程 = 0
+    
+    //=====任务二 send_message 简单内核消息缓冲区=====
+    #define AGENT_MSG_BUF_LEN 128
+    char agent_msg_buf[AGENT_MSG_BUF_LEN];
+    int  agent_msg_len;
+    //结束
 };
 
 #define PF_EXITING                  0x00000001      // getting shutdown
