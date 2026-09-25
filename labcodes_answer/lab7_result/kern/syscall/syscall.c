@@ -76,7 +76,7 @@ sys_getpid(uint32_t arg[]) {
 static int
 sys_putc(uint32_t arg[]) {
     int c = (int)arg[0];
-    cons_putc(c);
+    cputchar(c);
     return 0;
 }
 
@@ -299,11 +299,11 @@ syscall(void) {
     int num = tf->tf_regs.reg_eax;
     if (num >= 0 && num < NUM_SYSCALLS) {
         if (syscalls[num] != NULL) {
-            arg[0] = tf->tf_regs.reg_ebx;   // a[0]，第1个系统调用附加参数
-            arg[1] = tf->tf_regs.reg_ecx;   // a[1]，第2个系统调用附加参数
-            arg[2] = tf->tf_regs.reg_edx;   // a[2]，第3个系统调用附加参数
-            arg[3] = tf->tf_regs.reg_esi;   // a[3]，第4个系统调用附加参数
-            arg[4] = tf->tf_regs.reg_edi;   // a[4]，第5个系统调用附加参数
+             arg[0] = tf->tf_regs.reg_edx;
+            arg[1] = tf->tf_regs.reg_ecx;
+            arg[2] = tf->tf_regs.reg_ebx;
+            arg[3] = tf->tf_regs.reg_edi;
+            arg[4] = tf->tf_regs.reg_esi;
             tf->tf_regs.reg_eax = syscalls[num](arg);
             return ;
         }

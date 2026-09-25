@@ -18,11 +18,11 @@ syscall(int num, ...) {
         : "=a" (ret)
         : "i" (T_SYSCALL),
           "a" (num),
-          "b" (a[0]),
+          "d" (a[0]),
           "c" (a[1]),
-          "d" (a[2]),
-          "S" (a[3]),
-          "D" (a[4])
+          "b" (a[2]),
+          "D" (a[3]),
+          "S" (a[4])
         : "cc", "memory");
     return ret;
 }
