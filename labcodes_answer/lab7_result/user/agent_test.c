@@ -52,6 +52,7 @@ static void set_param_str(struct tool_param *p, const char *key, const char *s)
 
 int main(void)
 {
+    cprintf("USER MAIN START\n");
     char padding[4096];
     struct agent_info info;
     padding[0] = 0;

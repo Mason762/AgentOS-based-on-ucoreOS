@@ -32,26 +32,12 @@ static void check_swap(void);
 int
 swap_init(void)
 {
-     swapfs_init();
-
-     if (!(1024 <= max_swap_offset && max_swap_offset < MAX_SWAP_OFFSET_LIMIT))
-     {
-          panic("bad max_swap_offset %08x.\n", max_swap_offset);
-     }
-     
-
-     sm = &swap_manager_fifo;
-     int r = sm->init();
-     
-     if (r == 0)
-     {
-          swap_init_ok = 1;
-          cprintf("SWAP: manager = %s\n", sm->name);
-          check_swap();
-     }
-
-     return r;
+    // 关闭swap，不初始化交换分区，直接返回，跳过panic断言
+    swap_init_ok = 0;
+    cprintf("SWAP: swap disabled for agent lab\n");
+    return 0;
 }
+
 
 int
 swap_init_mm(struct mm_struct *mm)

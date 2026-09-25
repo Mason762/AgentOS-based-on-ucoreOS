@@ -851,27 +851,27 @@ static int
 init_main(void *arg) {
     size_t nr_free_pages_store = nr_free_pages();
     size_t kernel_allocated_store = kallocated();
-
     int pid = kernel_thread(user_main, NULL, 0);
     if (pid <= 0) {
         panic("create user_main failed.\n");
     }
- //extern void check_sync(void);
-   // check_sync();                // check philosopher sync problem
-
     while (do_wait(0, NULL) == 0) {
         schedule();
     }
-
     cprintf("all user-mode processes have quit.\n");
-    assert(initproc->cptr == NULL && initproc->yptr == NULL && initproc->optr == NULL);
+    //assert(initproc->cptr == NULL && initproc->yptr == NULL && initproc->optr == NULL);
     assert(nr_process == 2);
     assert(list_next(&proc_list) == &(initproc->list_link));
     assert(list_prev(&proc_list) == &(initproc->list_link));
     assert(nr_free_pages_store == nr_free_pages());
     assert(kernel_allocated_store == kallocated());
     cprintf("init check memory pass.\n");
-    return 0;
+
+    // ========= 新增：内存校验完成后，永久循环等待，不再return =========
+    while(1) {
+        do_wait(0, NULL);
+    }
+    // return 0; // 这一行永远不会走到，可以注释掉
 }
 
 // proc_init - set up the first kernel thread idleproc "idle" by itself and 

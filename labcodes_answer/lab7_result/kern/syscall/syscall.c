@@ -11,6 +11,7 @@
 #include <vmm.h>
 #include <agent_tool.h>
 #include <string.h>
+#include <console.h>
 
 #define AGENT_CTX_VA    0x20000000
 #define AGENT_CTX_SIZE  PGSIZE
@@ -75,7 +76,7 @@ sys_getpid(uint32_t arg[]) {
 static int
 sys_putc(uint32_t arg[]) {
     int c = (int)arg[0];
-    cputchar(c);
+    cons_putc(c);
     return 0;
 }
 
@@ -85,11 +86,11 @@ sys_pgdir(uint32_t arg[]) {
     return 0;
 }
 
-static uint32_t
+static int
 sys_gettime(uint32_t arg[]) {
     return (int)ticks;
 }
-static uint32_t
+static int
 sys_lab6_set_priority(uint32_t arg[])
 {
     uint32_t priority = (uint32_t)arg[0];
@@ -167,12 +168,11 @@ sys_agent_info(uint32_t arg[])
     k_info.ctx_total_len = proc->context_path_meta.total_len;
     k_info.ctx_cur_pos = proc->context_path_meta.cur_pos;
 
-    int ret = copy_to_user(current->mm, (void *)user_va, &k_info, sizeof(struct agent_info));
-cprintf("sys_agent_info: copy_to_user return %d\n", ret);
-if (ret == 0) { // ret ==0 代表校验失败
-    cprintf("sys_agent_info: copy_to_user failed\n");
-    return -E_INVAL;
-}
+   bool ret = copy_to_user(current->mm, (void *)user_va, &k_info, sizeof(struct agent_info));
+    if (!ret) { // ret ==0 代表校验失败
+        cprintf("sys_agent_info: copy_to_user failed\n");
+        return -E_INVAL;
+    }
 cprintf("sys_agent_info: copy success\n");
 
     return 0;
@@ -222,11 +222,12 @@ sys_tool_call(uint32_t arg[])
 
     // 1. 在内核栈分配请求结构体缓冲区，从用户态拷贝 tool_request
     struct tool_request req;
-    bool ret = copy_from_user(current->mm, &req, (void *)req_va, sizeof(struct tool_request), 0);
-    if (ret != 0)
+        bool ret = copy_from_user(current->mm, &req, (void *)req_va, sizeof(struct tool_request), 0);
+    if (!ret)
     {
         return -E_INVAL;
     }
+
 
     // 2. 查找对应的工具handler
     tool_handler_t handler = find_tool(req.tool_name);
@@ -298,11 +299,11 @@ syscall(void) {
     int num = tf->tf_regs.reg_eax;
     if (num >= 0 && num < NUM_SYSCALLS) {
         if (syscalls[num] != NULL) {
-            arg[0] = tf->tf_regs.reg_edx;
-            arg[1] = tf->tf_regs.reg_ecx;
-            arg[2] = tf->tf_regs.reg_ebx;
-            arg[3] = tf->tf_regs.reg_edi;
-            arg[4] = tf->tf_regs.reg_esi;
+            arg[0] = tf->tf_regs.reg_ebx;   // a[0]，第1个系统调用附加参数
+            arg[1] = tf->tf_regs.reg_ecx;   // a[1]，第2个系统调用附加参数
+            arg[2] = tf->tf_regs.reg_edx;   // a[2]，第3个系统调用附加参数
+            arg[3] = tf->tf_regs.reg_esi;   // a[3]，第4个系统调用附加参数
+            arg[4] = tf->tf_regs.reg_edi;   // a[4]，第5个系统调用附加参数
             tf->tf_regs.reg_eax = syscalls[num](arg);
             return ;
         }
