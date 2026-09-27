@@ -140,6 +140,10 @@ alloc_proc(void) {
         proc->context_path_meta.cur_pos = 0;
         proc->context_path_meta.quota = 0;
 
+        //=====任务三淘汰策略【新增两行】=====
+        proc->context_path_meta.evict_policy = 0;   // 默认FIFO策略
+        proc->context_path_meta.node_count = 0;     // 当前节点计数初始为0
+
         proc->agent_ctx_va = 0; //普通进程无Agent Context区
     }
     return proc;

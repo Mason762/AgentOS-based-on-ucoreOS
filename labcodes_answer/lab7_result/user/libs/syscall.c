@@ -91,3 +91,24 @@ int tool_list(uint32_t *out_result_len)
 {
     return syscall(SYS_tool_list, (uintptr_t)out_result_len);
 }
+
+// Agent‑OS 任务三 用户态封装
+int sys_context_push(struct context_node *node)
+{
+    return syscall(SYS_context_push, (uint32_t)node);
+}
+
+int sys_context_query(int idx, struct context_node *buf)
+{
+    return syscall(SYS_context_query, (uint32_t)idx, (uint32_t)buf);
+}
+
+int sys_context_rollback(int target_idx)
+{
+    return syscall(SYS_context_rollback, (uint32_t)target_idx);
+}
+
+int sys_context_clear(void)
+{
+    return syscall(SYS_context_clear);
+}

@@ -123,6 +123,10 @@ sys_agent_create(uint32_t arg[])
     child->heartbeat_interval = heartbeat;
     child->resource_quota = quota;
     child->context_path_meta.quota = quota;
+    child->context_path_meta.evict_policy = 0;
+    child->context_path_meta.node_count = 0;
+    child->context_path_meta.total_len = 0;
+    child->context_path_meta.cur_pos = 0;
     child->loop_state = AGENT_LOOP_IDLE;
     int ret = mm_map(child->mm, AGENT_CTX_VA, AGENT_CTX_SIZE, VM_READ | VM_WRITE, NULL);
     if (ret != 0) {
@@ -175,6 +179,134 @@ sys_agent_info(uint32_t arg[])
     }
 cprintf("sys_agent_info: copy success\n");
 
+    return 0;
+}
+
+//任务三新增FIFO淘汰策略函数
+static int fifo_evict(struct proc_struct *proc)
+{
+    if (proc->context_path_meta.node_count == 0) {
+        return -E_INVAL;
+    }
+    size_t node_sz = sizeof(struct context_node);
+    // 淘汰最老的节点，即从agent_ctx_va开始的第一个节点
+    cprintf("[FIFO_EVICT] trigger evict, drop oldest node. node_count=%d, total_len=%zu\n",proc->context_path_meta.node_count, proc->context_path_meta.total_len);
+    uintptr_t base_va = proc->agent_ctx_va;
+    size_t move_bytes = proc->context_path_meta.total_len - node_sz;
+
+    char tmp_buf[AGENT_CTX_SIZE];
+
+    // copy_from_user：5个参数，末尾writable传0：只是读用户内存，不需要写权限
+    bool ok = copy_from_user(proc->mm, tmp_buf, (void *)(base_va + node_sz), move_bytes, 0);
+    if (!ok) {
+        return -E_FAULT;
+    }
+    // copy_to_user：4个参数
+    ok = copy_to_user(proc->mm, (void *)base_va, tmp_buf, move_bytes);
+    if (!ok) {
+        return -E_FAULT;
+    }
+
+    proc->context_path_meta.total_len -= node_sz;
+    proc->context_path_meta.node_count --;
+    proc->context_path_meta.cur_pos -= node_sz;
+    //淘汰结束后
+    cprintf("[FIFO_EVICT] evict done. new node_count=%d, total_len=%zu\n",proc->context_path_meta.node_count, proc->context_path_meta.total_len);
+    return 0;
+}
+
+//任务三的4个系统调用
+static int sys_context_push(uint32_t arg[])
+{
+    if (current->agent_type != AGENT_TYPE_AGENT) {
+        return -E_PERM;
+    }
+    // arg[0]：用户态 struct context_node* 虚拟地址
+    uintptr_t node_va = arg[0];
+    struct context_node node;
+
+    // 从用户态读取待写入节点，只读，writable=0
+    bool ok = copy_from_user(current->mm, &node, (void *)node_va, sizeof(struct context_node), 0);
+    if (!ok) {
+        return -E_FAULT;
+    }
+
+    size_t node_sz = sizeof(struct context_node);
+    // 空间不够，循环淘汰
+    while(current->context_path_meta.total_len + node_sz > current->resource_quota)
+    {
+        int ret = fifo_evict(current);
+        if(ret != 0){
+            return ret;
+        }
+    }
+
+    // 把节点拷贝到用户态agent_ctx_va + cur_pos
+    uintptr_t dest_va = current->agent_ctx_va + current->context_path_meta.cur_pos;
+    ok = copy_to_user(current->mm, (void *)dest_va, &node, node_sz);
+    if (!ok) {
+        return -E_FAULT;
+    }
+
+    // 更新PCB元信息
+    current->context_path_meta.total_len += node_sz;
+    current->context_path_meta.node_count ++;
+    current->context_path_meta.cur_pos += node_sz;
+    return 0;
+}
+static int sys_context_query(uint32_t arg[])
+{
+    if (current->agent_type != AGENT_TYPE_AGENT) {
+        return -E_PERM;
+    }
+    // arg[0]：索引idx； arg[1]：用户输出缓冲区va
+    int idx = (int)arg[0];
+    uintptr_t buf_va = arg[1];
+    size_t node_sz = sizeof(struct context_node);
+
+    // 索引合法性检查
+    if(idx < 0 || idx >= current->context_path_meta.node_count){
+        return -E_INVAL;
+    }
+    uintptr_t src_va = current->agent_ctx_va + idx * node_sz;
+    struct context_node node;
+
+    bool ok = copy_from_user(current->mm, &node, (void *)src_va, node_sz, 0);
+    if (!ok) {
+        return -E_FAULT;
+    }
+    ok = copy_to_user(current->mm, (void *)buf_va, &node, node_sz);
+    if (!ok) {
+        return -E_FAULT;
+    }
+    return 0;
+}
+static int sys_context_rollback(uint32_t arg[])
+{
+    if (current->agent_type != AGENT_TYPE_AGENT) {
+        return -E_PERM;
+    }
+    // arg[0]：目标回退索引
+    int target_idx = (int)arg[0];
+    size_t node_sz = sizeof(struct context_node);
+
+    if(target_idx < 0 || target_idx >= current->context_path_meta.node_count){
+        return -E_INVAL;
+    }
+
+    current->context_path_meta.node_count = target_idx;
+    current->context_path_meta.total_len = target_idx * node_sz;
+    current->context_path_meta.cur_pos = target_idx * node_sz;
+    return 0;
+}
+static int sys_context_clear(uint32_t arg[])
+{
+    if (current->agent_type != AGENT_TYPE_AGENT) {
+        return -E_PERM;
+    }
+    current->context_path_meta.node_count = 0;
+    current->context_path_meta.total_len = 0;
+    current->context_path_meta.cur_pos = 0;
     return 0;
 }
 
@@ -288,6 +420,11 @@ static int (*syscalls[])(uint32_t arg[]) = {
     /* ========= Agent‑OS 任务二 新增 ========= */
     [SYS_tool_call]         sys_tool_call,
     [SYS_tool_list]         sys_tool_list,
+    /* ========= Agent‑OS 任务三 新增 ========= */
+    [SYS_context_push]      sys_context_push,
+    [SYS_context_query]     sys_context_query,
+    [SYS_context_rollback]  sys_context_rollback,
+    [SYS_context_clear]     sys_context_clear,
 };
 
 #define NUM_SYSCALLS        ((sizeof(syscalls)) / (sizeof(syscalls[0])))

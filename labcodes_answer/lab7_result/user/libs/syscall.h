@@ -10,6 +10,14 @@
 #define SYS_tool_call       202
 #define SYS_tool_list       203
 
+struct context_node;
+
+// =========任务三新增系统调用号=========
+#define SYS_context_push      24
+#define SYS_context_query     25
+#define SYS_context_rollback  26
+#define SYS_context_clear     27
+
 // 前向声明
 struct agent_info;
 struct tool_request;
@@ -39,4 +47,9 @@ int sys_sleep(unsigned int time);
 int tool_call(uintptr_t req_buf);
 int tool_list(uint32_t *out_result_len);
 
+// 任务三封装声明
+int sys_context_push(struct context_node *node);
+int sys_context_query(int idx, struct context_node *buf);
+int sys_context_rollback(int target_idx);
+int sys_context_clear(void);
 #endif /* !__USER_LIBS_SYSCALL_H__ */

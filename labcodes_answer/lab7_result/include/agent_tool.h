@@ -92,4 +92,9 @@ struct tool_entry {
     const char *desc;
 };
 #endif
+
+// ========= Task3 新增 context_node 结构体 =========
+struct context_node {
+    int tag;
+} __attribute__((packed));
 #endif

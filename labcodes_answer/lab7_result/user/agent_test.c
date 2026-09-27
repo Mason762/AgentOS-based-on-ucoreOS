@@ -144,6 +144,57 @@ int main(void)
             }
         }
         cprintf("\n[Test3] All tool test finished\n");
+
+        // ====================== 任务三测试【新增，任务一/二不动】======================
+        cprintf("\n===== Task3 Context Syscall Test Start =====\n");
+        struct context_node node_write, node_read;
+        struct agent_info ag_info;
+
+        // 循环写入多个节点，塞满配额触发FIFO淘汰
+        cprintf("[Task3] Push 5 context nodes to trigger FIFO evict (quota=4096)\n");
+        int i;
+        for(i=0;i<5;i++){
+            memset(&node_write,0,sizeof(node_write));
+            // 写入区分标记，方便验证FIFO淘汰：存放序号i
+            node_write.tag = i;
+            int ret = sys_context_push(&node_write);
+            cprintf("[Task3] push node %d, ret=%d\n", i, ret);
+
+            // push后读取当前Agent状态，打印当前节点数量
+            agent_info(getpid(), &ag_info);
+            int node_cnt = ag_info.ctx_total_len / sizeof(struct context_node);
+            cprintf("[Task3]  --> after push %d, node_count=%d, total_len=%u\n",
+                    i, node_cnt, ag_info.ctx_total_len);
+        }
+
+        // 查询索引0，验证：最老的节点被FIFO淘汰，现在索引0是原来第1号节点
+        cprintf("\n[Task3] Query index 0 (after eviction):\n");
+        int q_ret = sys_context_query(0, &node_read);
+        if(q_ret == 0){
+            cprintf("[Task3] query ok, node.tag = %d\n", node_read.tag);
+        }else{
+            cprintf("[Task3] query failed ret=%d\n", q_ret);
+        }
+
+        // 回退到索引1
+        cprintf("\n[Task3] Rollback to index 1\n");
+        int rb_ret = sys_context_rollback(1);
+        cprintf("[Task3] rollback ret=%d\n", rb_ret);
+        agent_info(getpid(), &ag_info);
+        int after_rollback_cnt = ag_info.ctx_total_len / sizeof(struct context_node);
+        cprintf("[Task3] after rollback, node_count=%d\n", after_rollback_cnt);
+
+        // 清空全部上下文
+        cprintf("\n[Task3] Clear all context\n");
+        int clr_ret = sys_context_clear();
+        cprintf("[Task3] clear ret=%d\n", clr_ret);
+        agent_info(getpid(), &ag_info);
+        int after_clear_cnt = ag_info.ctx_total_len / sizeof(struct context_node);
+        cprintf("[Task3] after clear, node_count=%d\n", after_clear_cnt);
+
+        cprintf("\n===== Task3 Context Syscall Test Finished =====\n");
+        // ===========================================================================
+
         exit(0);
     } else {
         cprintf("agent_create success, agent pid = %d\n", agent_pid);

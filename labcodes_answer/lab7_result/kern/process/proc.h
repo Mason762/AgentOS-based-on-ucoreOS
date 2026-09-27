@@ -76,6 +76,9 @@ struct proc_struct {
         size_t total_len;           // 当前上下文路径总占用字节
         size_t cur_pos;             // 当前节点位置
         size_t quota;               // 配额副本，和resource_quota保持一致
+        //====任务三新增：淘汰策略参数====
+        int evict_policy;    // 0=FIFO(先进先出)，1=LRU(最近最少使用)
+        size_t node_count;  // 当前已经存储的节点总数量，方便淘汰计数
     } context_path_meta;
 
     uintptr_t agent_ctx_va;         // Agent Context区 用户虚拟地址；普通进程 = 0
