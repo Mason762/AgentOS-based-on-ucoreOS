@@ -15,19 +15,6 @@ struct agent_info {
     size_t ctx_cur_pos;
 } __attribute__((packed));
 
-// ================= 用户态系统调用封装：任务二新增 =================
-static inline int
-sys_tool_call(struct tool_request *req)
-{
-    return syscall(SYS_tool_call, (uint32_t)req, 0,0,0,0);
-}
-
-static inline int
-sys_tool_list(uint32_t *out_count)
-{
-    return syscall(SYS_tool_list, (uint32_t)out_count,0,0,0,0);
-}
-
 // 辅助：填充tool_param（int类型）
 static void set_param_int(struct tool_param *p, const char *key, int32_t val)
 {
@@ -73,12 +60,18 @@ int main(void)
     }
     // ========== 测试 agent_create + agent_info（任务一核心） ==========
     cprintf("\n[Test 2] Test new agent_create & agent_info\n");
-    int agent_pid = agent_create(10, 4096);
+    int agent_pid = agent_create(10, 16);//为任务三测试，配额设置为16字节
     if (agent_pid < 0) {
         cprintf("agent_create failed!\n");
     } else if (agent_pid == 0) {
         // Agent子进程：这里作为Agent进程，执行任务二工具调用测试
         cprintf("Agent child started, pid=%d, run task2 tool test\n", getpid());
+        cprintf("\n[Test3.0] tool list test, user call sys_tool_list\n");
+        {
+            uint32_t tool_count = 0;
+            int ret = sys_tool_list(&tool_count);
+            cprintf("  -> User态调用 sys_tool_list, ret=%d, available tool count=%u\n", ret, tool_count);
+        }
         // ========= Test3: Task2 tool call test =========
         cprintf("\n[Test3.1] tool: get_system_status\n");
         {
@@ -151,7 +144,7 @@ int main(void)
         struct agent_info ag_info;
 
         // 循环写入多个节点，塞满配额触发FIFO淘汰
-        cprintf("[Task3] Push 5 context nodes to trigger FIFO evict (quota=4096)\n");
+        cprintf("[Task3] Push 5 context nodes to trigger FIFO evict (quota=16)\n");
         int i;
         for(i=0;i<5;i++){
             memset(&node_write,0,sizeof(node_write));

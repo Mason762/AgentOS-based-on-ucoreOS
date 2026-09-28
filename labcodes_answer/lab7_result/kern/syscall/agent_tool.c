@@ -1,8 +1,11 @@
 #include <defs.h>
+#include <sync.h>
 #include <agent_tool.h>
 #include <proc.h>
 #include <pmm.h>
 #include <string.h>
+
+extern list_entry_t proc_list;
 extern size_t npage;
 
 
@@ -37,32 +40,38 @@ int tool_query_process(struct tool_request *req, void *out_buf, size_t max_out, 
         }
     }
     (void)have_filter; // 消除unused警告
-    //spin_lock(&proc_list_lock);
-    /* ======== 临时注释真实链表遍历，暂时返回空结果 ========
-    struct proc_struct *p;
-    list_for_each_entry(p, &proc_list, list_link)
+
+    bool intr_flag;
+    local_intr_save(intr_flag); // 关中断，进入临界区
     {
-        if(have_filter){
-            if(filter_type == AGENT_TYPE_AGENT && p->agent_type == AGENT_TYPE_NORMAL) continue;
-            if(filter_type == AGENT_TYPE_NORMAL && p->agent_type == AGENT_TYPE_AGENT) continue;
+        list_entry_t *le;
+        struct proc_struct *p;
+        le = &proc_list;
+        while ((le = list_next(le)) != &proc_list)
+        {
+            p = le2proc(le, list_link);
+            if(have_filter){
+                if(filter_type == AGENT_TYPE_AGENT && p->agent_type == AGENT_TYPE_NORMAL) continue;
+                if(filter_type == AGENT_TYPE_NORMAL && p->agent_type == AGENT_TYPE_AGENT) continue;
+            }
+            if((*out_len + sizeof(struct proc_result_item)) > max_out){
+                local_intr_restore(intr_flag); // 出错：恢复中断再返回
+                hdr->status_code = -E_NOMEM;
+                return -E_NOMEM;
+            }
+            struct proc_result_item *item = (struct proc_result_item *)((char *)out_buf + *out_len);
+            item->pid = p->pid;
+            item->agent_type = p->agent_type;
+            item->state = p->state;
+            // PCB name长度50，协议只存16字节，截断拷贝
+            strncpy(item->name, p->name, sizeof(item->name)-1);
+            item->name[sizeof(item->name)-1] = '\0';
+            hdr->item_count ++;
+            *out_len += sizeof(struct proc_result_item);
         }
-        if((*out_len + sizeof(struct proc_result_item)) > max_out){
-            spin_unlock(&proc_list_lock);
-            hdr->status_code = -E_NOMEM;
-            return -E_NOMEM;
-        }
-        struct proc_result_item *item = (struct proc_result_item *)((char *)out_buf + *out_len);
-        item->pid = p->pid;
-        item->agent_type = p->agent_type;
-        item->state = p->state;
-        // PCB name长度50，协议只存16字节，截断拷贝
-        strncpy(item->name, p->name, sizeof(item->name)-1);
-        item->name[sizeof(item->name)-1] = '\0';
-        hdr->item_count ++;
-        *out_len += sizeof(struct proc_result_item);
     }
-    spin_unlock(&proc_list_lock);
-    */
+    local_intr_restore(intr_flag); // 恢复中断
+
     return 0;
 }
 
@@ -89,14 +98,20 @@ int tool_get_system_status(struct tool_request *req, void *out_buf, size_t max_o
     st->total_mem = npage * PGSIZE;
     st->free_mem = nr_free_pages() * PGSIZE;
     uint32_t proc_cnt = 0;
-    //spin_lock(&proc_list_lock);
-    /* ======== 临时注释真实链表遍历 ========
-    struct proc_struct *p;
-    list_for_each_entry(p, &proc_list, list_link){
-        proc_cnt ++;
+
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+        list_entry_t *le;
+        struct proc_struct *p;
+        le = &proc_list;
+        while ((le = list_next(le)) != &proc_list) {
+            p = le2proc(le, list_link);
+            proc_cnt ++;
+        }
     }
-    spin_unlock(&proc_list_lock);
-    */
+    local_intr_restore(intr_flag);
+
     st->proc_count = proc_cnt;
     hdr->item_count = 1;
     *out_len += sizeof(struct sys_status_item);
@@ -143,7 +158,7 @@ int tool_send_message(struct tool_request *req, void *out_buf, size_t max_out, s
         hdr->status_code = -E_INVAL;
         return -E_INVAL;
     }
-    // uCore自带find_proc，内部会处理锁
+    // uCore自带find_proc，内部会处理关中断保护
     struct proc_struct *target_proc = find_proc(target_pid);
     if(target_proc == NULL){
         hdr->status_code = -E_NOENT;
@@ -154,17 +169,20 @@ int tool_send_message(struct tool_request *req, void *out_buf, size_t max_out, s
         hdr->status_code = -E_INVAL;
         return -E_INVAL;
     }
-    //spin_lock(&proc_list_lock);
-    /* ======== 临时注释消息写入逻辑 ========
-    if( target_proc->agent_msg_len + strlen(msg_buf) + 1 >= AGENT_MSG_BUF_LEN ){
-        spin_unlock(&proc_list_lock);
-        hdr->status_code = -E_NOMEM;
-        return -E_NOMEM;
+
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+        if( target_proc->agent_msg_len + strlen(msg_buf) + 1 >= AGENT_MSG_BUF_LEN ){
+            local_intr_restore(intr_flag);
+            hdr->status_code = -E_NOMEM;
+            return -E_NOMEM;
+        }
+        strcpy( target_proc->agent_msg_buf + target_proc->agent_msg_len, msg_buf );
+        target_proc->agent_msg_len += (strlen(msg_buf)+1);
     }
-    strcpy( target_proc->agent_msg_buf + target_proc->agent_msg_len, msg_buf );
-    target_proc->agent_msg_len += (strlen(msg_buf)+1);
-    spin_unlock(&proc_list_lock);
-    */
+    local_intr_restore(intr_flag);
+
     //任务五扩展点：唤醒等待消息的Agent
     return 0;
 }

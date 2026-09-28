@@ -10,7 +10,7 @@
 #define SYS_tool_call       202
 #define SYS_tool_list       203
 
-struct context_node;
+
 
 // =========任务三新增系统调用号=========
 #define SYS_context_push      24
@@ -21,6 +21,7 @@ struct context_node;
 // 前向声明
 struct agent_info;
 struct tool_request;
+struct context_node;
 
 // syscall 只声明，实现在 syscall.c
 int syscall(int num, ...);
@@ -44,8 +45,8 @@ void sys_lab6_set_priority(uint32_t priority);
 int sys_sleep(unsigned int time);
 
 // 任务二封装声明
-int tool_call(uintptr_t req_buf);
-int tool_list(uint32_t *out_result_len);
+int sys_tool_call(struct tool_request *req);
+int sys_tool_list(uint32_t *out_count);
 
 // 任务三封装声明
 int sys_context_push(struct context_node *node);

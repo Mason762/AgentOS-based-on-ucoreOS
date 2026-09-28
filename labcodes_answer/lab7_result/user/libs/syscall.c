@@ -1,7 +1,9 @@
 #include <defs.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <stdarg.h>
 #include <syscall.h>
+#include <agent_tool.h>
 #define MAX_ARGS            5
 int
 syscall(int num, ...) {
@@ -83,13 +85,37 @@ agent_info(int pid, struct agent_info *buf)
     return syscall(SYS_agent_info, pid, buf);
 }
 // Agent‑OS 任务二 用户态封装
-int tool_call(uintptr_t req_buf)
+int sys_tool_call(struct tool_request *req)
 {
-    return syscall(SYS_tool_call, req_buf);
+    cprintf("[USER tool_call] =====================\n");
+    cprintf("[USER tool_call] tool_name: %s\n", req->tool_name);
+    cprintf("[USER tool_call] param_cnt: %u\n", req->param_cnt);
+    int p;
+    for(p = 0; p < req->param_cnt; p++){
+        struct tool_param *prm = &req->params[p];
+        cprintf("[USER tool_call]   param[%d] key=%s, type=%d, ",
+               p, prm->key, prm->val_type);
+        if(prm->val_type == PARAM_TYPE_INT){
+            cprintf("ival=%d\n", prm->val.ival);
+        }else if(prm->val_type == PARAM_TYPE_STRING){
+            cprintf("sval=%s\n", prm->val.sval);
+        }else{
+            cprintf("unknown type\n");
+        }
+    }
+    int ret = syscall(SYS_tool_call, (uint32_t)req, 0,0,0,0);
+    cprintf("[USER tool_call] syscall return ret=%d (0x%08x)\n", ret, ret);
+    cprintf("[USER tool_call] =====================\n");
+    return ret;
 }
-int tool_list(uint32_t *out_result_len)
+
+int sys_tool_list(uint32_t *out_count)
 {
-    return syscall(SYS_tool_list, (uintptr_t)out_result_len);
+    cprintf("[USER tool_list] call tool_list, out_count ptr=0x%08x\n", (uintptr_t)out_count);
+    int ret = syscall(SYS_tool_list, (uint32_t)out_count,0,0,0,0);
+    cprintf("[USER tool_list] syscall return ret=%d, total_items=%u\n", ret, *out_count);
+    cprintf("[USER tool_list] =====================\n");
+    return ret;
 }
 
 // Agent‑OS 任务三 用户态封装

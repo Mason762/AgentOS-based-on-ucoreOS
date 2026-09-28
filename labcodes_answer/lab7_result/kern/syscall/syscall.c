@@ -190,7 +190,7 @@ static int fifo_evict(struct proc_struct *proc)
     }
     size_t node_sz = sizeof(struct context_node);
     // 淘汰最老的节点，即从agent_ctx_va开始的第一个节点
-    cprintf("[FIFO_EVICT] trigger evict, drop oldest node. node_count=%d, total_len=%zu\n",proc->context_path_meta.node_count, proc->context_path_meta.total_len);
+    cprintf("[FIFO_EVICT] trigger evict, drop oldest node. node_count=%d, total_len=%u\n",proc->context_path_meta.node_count, proc->context_path_meta.total_len);
     uintptr_t base_va = proc->agent_ctx_va;
     size_t move_bytes = proc->context_path_meta.total_len - node_sz;
 
@@ -211,102 +211,121 @@ static int fifo_evict(struct proc_struct *proc)
     proc->context_path_meta.node_count --;
     proc->context_path_meta.cur_pos -= node_sz;
     //淘汰结束后
-    cprintf("[FIFO_EVICT] evict done. new node_count=%d, total_len=%zu\n",proc->context_path_meta.node_count, proc->context_path_meta.total_len);
+    cprintf("[FIFO_EVICT] evict done. new node_count=%d, total_len=%u\n",proc->context_path_meta.node_count, proc->context_path_meta.total_len);
     return 0;
 }
 
 //任务三的4个系统调用
 static int sys_context_push(uint32_t arg[])
 {
+    cprintf("[sys_context_push] enter, pid=%d\n", current->pid);
     if (current->agent_type != AGENT_TYPE_AGENT) {
+        cprintf("[sys_context_push] ERR: not agent type\n");
         return -E_PERM;
     }
     // arg[0]：用户态 struct context_node* 虚拟地址
     uintptr_t node_va = arg[0];
     struct context_node node;
-
     // 从用户态读取待写入节点，只读，writable=0
     bool ok = copy_from_user(current->mm, &node, (void *)node_va, sizeof(struct context_node), 0);
     if (!ok) {
+        cprintf("[sys_context_push] ERR copy_from_user\n");
         return -E_FAULT;
     }
-
     size_t node_sz = sizeof(struct context_node);
     // 空间不够，循环淘汰
     while(current->context_path_meta.total_len + node_sz > current->resource_quota)
     {
+        cprintf("[sys_context_push] quota full, trigger fifo evict\n");
         int ret = fifo_evict(current);
         if(ret != 0){
+            cprintf("[sys_context_push] fifo evict failed ret=%d\n", ret);
             return ret;
         }
     }
-
     // 把节点拷贝到用户态agent_ctx_va + cur_pos
     uintptr_t dest_va = current->agent_ctx_va + current->context_path_meta.cur_pos;
     ok = copy_to_user(current->mm, (void *)dest_va, &node, node_sz);
     if (!ok) {
+        cprintf("[sys_context_push] ERR copy_to_user\n");
         return -E_FAULT;
     }
-
     // 更新PCB元信息
     current->context_path_meta.total_len += node_sz;
     current->context_path_meta.node_count ++;
     current->context_path_meta.cur_pos += node_sz;
+    cprintf("[sys_context_push] success, node_count=%d, total_len=%u, cur_pos=%u\n",
+        current->context_path_meta.node_count,
+        current->context_path_meta.total_len,
+        current->context_path_meta.cur_pos);
     return 0;
 }
 static int sys_context_query(uint32_t arg[])
 {
+    cprintf("[sys_context_query] enter, pid=%d\n", current->pid);
     if (current->agent_type != AGENT_TYPE_AGENT) {
+        cprintf("[sys_context_query] ERR: not agent type\n");
         return -E_PERM;
     }
     // arg[0]：索引idx； arg[1]：用户输出缓冲区va
     int idx = (int)arg[0];
     uintptr_t buf_va = arg[1];
+    cprintf("[sys_context_query] query idx=%d\n", idx);
     size_t node_sz = sizeof(struct context_node);
-
     // 索引合法性检查
     if(idx < 0 || idx >= current->context_path_meta.node_count){
+        cprintf("[sys_context_query] ERR invalid idx=%d\n", idx);
         return -E_INVAL;
     }
     uintptr_t src_va = current->agent_ctx_va + idx * node_sz;
     struct context_node node;
-
     bool ok = copy_from_user(current->mm, &node, (void *)src_va, node_sz, 0);
     if (!ok) {
+        cprintf("[sys_context_query] ERR copy_from_user\n");
         return -E_FAULT;
     }
     ok = copy_to_user(current->mm, (void *)buf_va, &node, node_sz);
     if (!ok) {
+        cprintf("[sys_context_query] ERR copy_to_user\n");
         return -E_FAULT;
     }
+    cprintf("[sys_context_query] success\n");
     return 0;
 }
 static int sys_context_rollback(uint32_t arg[])
 {
+    cprintf("[sys_context_rollback] enter, pid=%d\n", current->pid);
     if (current->agent_type != AGENT_TYPE_AGENT) {
+        cprintf("[sys_context_rollback] ERR: not agent type\n");
         return -E_PERM;
     }
     // arg[0]：目标回退索引
     int target_idx = (int)arg[0];
     size_t node_sz = sizeof(struct context_node);
-
+    cprintf("[sys_context_rollback] rollback to idx=%d\n", target_idx);
     if(target_idx < 0 || target_idx >= current->context_path_meta.node_count){
+        cprintf("[sys_context_rollback] ERR invalid idx=%d\n", target_idx);
         return -E_INVAL;
     }
-
-    current->context_path_meta.node_count = target_idx;
-    current->context_path_meta.total_len = target_idx * node_sz;
-    current->context_path_meta.cur_pos = target_idx * node_sz;
+    current->context_path_meta.node_count = target_idx + 1;
+    current->context_path_meta.total_len = (target_idx + 1) * node_sz;
+    current->context_path_meta.cur_pos = (target_idx + 1) * node_sz;
+    cprintf("[sys_context_rollback] success, node_count=%d, total_len=%u\n",
+        current->context_path_meta.node_count,
+        current->context_path_meta.total_len);
     return 0;
 }
 static int sys_context_clear(uint32_t arg[])
 {
+    cprintf("[sys_context_clear] enter, pid=%d\n", current->pid);
     if (current->agent_type != AGENT_TYPE_AGENT) {
+        cprintf("[sys_context_clear] ERR: not agent type\n");
         return -E_PERM;
     }
     current->context_path_meta.node_count = 0;
     current->context_path_meta.total_len = 0;
     current->context_path_meta.cur_pos = 0;
+    cprintf("[sys_context_clear] success, all context cleared\n");
     return 0;
 }
 
@@ -394,7 +413,7 @@ sys_tool_list(uint32_t arg[])
     }
     // 将count拷贝回用户态指针
     int ret = copy_to_user(current->mm, (void *)out_len_va, &count, sizeof(uint32_t));
-    if(ret != 0){
+    if(!ret){
         return -E_INVAL;
     }
     return 0;
